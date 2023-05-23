@@ -24,4 +24,3 @@ RUN python -m venv /py && \
     rm -rf /tmp
 
 ENV PATH="/py/bin:$PATH"
-
