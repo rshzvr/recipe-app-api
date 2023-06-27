@@ -11,6 +11,7 @@ from rest_framework import status
 CREATE_USER_URL = reverse('user:create')
 TOKEN_URL = reverse('user:token')
 
+
 def create_user(**params):
     """
     Create and return a new user
@@ -123,4 +124,3 @@ class PublicUserApiTests(TestCase):
 
         self.assertNotIn('token', response.data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
