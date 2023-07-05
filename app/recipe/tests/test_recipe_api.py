@@ -9,7 +9,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import Recipe, Tag
+from core.models import Recipe, Tag, Ingredient
 
 from recipe.serializers import RecipeSerializer, RecipeDetailSerializer
 
@@ -207,7 +207,7 @@ class PrivateRecipeAPITests(TestCase):
 
     def test_clear_recipe_tags(self):
         """
-
+        Test that tags can be deleted from a recipe successfully.
         """
         tag = Tag.objects.create(user=self.user, name='Breakfast')
         recipe = create_recipe(user=self.user)
@@ -221,3 +221,104 @@ class PrivateRecipeAPITests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn(tag, recipe.tags.all())
+
+    def test_create_recipe_with_new_ingredients(self):
+        """
+        Test creating a recipe with new ingredients
+        """
+        payload = {'title': 'cauliflower tacos',
+                   'time_minutes': 30,
+                   'price': Decimal('2.50'),
+                   'tags': [{'name': 'Mexican'}, {'name': 'Dinner'}],
+                   'ingredients': [{'name': 'Cauliflower'}, {'name': 'Tortillas'}]}
+        response = self.client.post(RECIPES_URL, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        recipes = Recipe.objects.filter(user=self.user)
+        self.assertEqual(recipes.count(), 1)
+        recipe = recipes[0]
+        self.assertEqual(recipe.ingredients.count(), 2)
+        for ingredient in payload['ingredients']:
+            exists = recipe.ingredients.filter(
+                name=ingredient['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+
+    def test_create_recipe_with_existing_ingredient(self):
+        """
+        Test that creating a recipe with an existing ingredient does not duplicate the ingredient
+        """
+        ingredient_beans = Ingredient.objects.create(user=self.user, name='Black Beans')
+        payload = {
+            'title': 'Refried Beans',
+            'time_minutes': 20,
+            'price': Decimal('2.50'),
+            'ingredients': [{'name': 'Black Beans'}, {'name': 'Paprika'}]
+        }
+        response = self.client.post(RECIPES_URL, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        recipes = Recipe.objects.filter(user=self.user)
+        self.assertEqual(recipes.count(), 1)
+        recipe = recipes[0]
+        self.assertEqual(recipe.ingredients.count(), 2)
+        self.assertIn(ingredient_beans, recipe.ingredients.all())
+        for ingredient in payload['ingredients']:
+            exists = recipe.ingredients.filter(
+                name=ingredient['name'],
+                user=self.user
+            ).exists()
+            self.assertTrue(exists)
+
+    def test_create_ingredient_on_update(self):
+        """
+        Test creating ingredient when updating a recipe
+        """
+        recipe = create_recipe(user=self.user)
+        payload = {'ingredients': [{'name': 'Cucumber'}]}
+        url = detail_url(recipe.id)
+        # update the ingredient in the existing recipe
+        response = self.client.patch(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_ingredient = Ingredient.objects.get(user=self.user, name='Cucumber')
+        # calling ingredients.all() makes a new query, so no need to refresh from DB
+        self.assertIn(new_ingredient, recipe.ingredients.all())
+
+    def test_update_recipe_assign_ingredient(self):
+        """
+        Assign an existing ingredient when updating a recipe
+        """
+        ingredient = Ingredient.objects.create(user=self.user, name='Lamb Mince')
+        recipe = create_recipe(user=self.user)
+        recipe.ingredients.add(ingredient)
+        self.assertIn(ingredient, recipe.ingredients.all())
+
+        ingredient_beef = Ingredient.objects.create(user=self.user, name='Beef Mince')
+        payload = {'ingredients': [{'name': 'Beef Mince'}]}
+        url = detail_url(recipe.id)
+        # update the ingredient in the existing recipe
+        response = self.client.patch(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # calling ingredients.all() makes a new query, so no need to refresh from DB
+        self.assertIn(ingredient_beef, recipe.ingredients.all())
+        self.assertNotIn(ingredient, recipe.ingredients.all())
+
+    def test_clear_recipe_ingredientss(self):
+        """
+        Test that tags can be deleted from a recipe successfully.
+        """
+        ingredient = Ingredient.objects.create(user=self.user, name='Breakfast')
+        recipe = create_recipe(user=self.user)
+        recipe.ingredients.add(ingredient)
+        self.assertIn(ingredient, recipe.ingredients.all())
+
+        payload = {'ingredients': []}
+        url = detail_url(recipe.id)
+        # update the ingredient in the existing recipe
+        response = self.client.patch(url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertNotIn(ingredient, recipe.ingredients.all())
